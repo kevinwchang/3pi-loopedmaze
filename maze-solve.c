@@ -29,8 +29,8 @@ node maze[MAZE_SIZE][MAZE_SIZE]; // x, y
 #define WEST  3
 
 #define flip(dir) (dir ^ 2)
-#define left_of(dir) ((dir - 1) & 0xF)
-#define right_of(dir) ((dir + 1) & 0xF)
+#define left_of(dir) ((dir - 1) & 0x3)
+#define right_of(dir) ((dir + 1) & 0x3)
 
 /*#define dir_exit(dir)           (1 << dir)
 #define exit_explored(exit_dir) (exit_dir << 4)
@@ -177,8 +177,12 @@ void update_map(uint8_t seg_length)
       shift_map_south(here.y - (MAZE_SIZE - 1));
       
     for (uint8_t y = prev.y; y < here.y; y++)
+    {
+      if (get_north_marks(here.x, y) == NO_EXIT)
+        zero_north_marks(here.x, y);
       add_north_mark(here.x, y);
-            
+    }      
+
     break;  
 
 
@@ -190,7 +194,11 @@ void update_map(uint8_t seg_length)
       shift_map_west(here.x - (MAZE_SIZE - 1));
       
     for (uint8_t x = prev.x; x < here.x; x++)
+    {
+      if (get_east_marks(x, here.y) == NO_EXIT)
+        zero_east_marks(x, here.y);
       add_east_mark(x, here.y);
+    }      
     
     break;
 
@@ -203,8 +211,12 @@ void update_map(uint8_t seg_length)
       shift_map_north(1 - here.y);  
 
     for (uint8_t y = here.y; y < prev.y; y++)
+    {
+      if (get_north_marks(here.x, y) == NO_EXIT)
+        zero_north_marks(here.x, y);
       add_north_mark(here.x, y);
-   
+    }
+        
     break;
     
     
@@ -216,17 +228,16 @@ void update_map(uint8_t seg_length)
       shift_map_east(1 - here.x);
       
     for (uint8_t x = here.x; x < prev.x; x++)
+    {
+      if (get_east_marks(x, here.y) == NO_EXIT)
+        zero_east_marks(x, here.y);
       add_east_mark(x, here.y);
+    }
 
     break;
   }   
   
-  // store # of marks in each direction
-  dir_marks[NORTH] = get_north_marks(here.x, here.y);
-  dir_marks[EAST]  = get_east_marks(here.x, here.y);
-  dir_marks[SOUTH] = get_north_marks(here.x, here.y - 1);
-  dir_marks[WEST]  = get_east_marks(here.x - 1, here.y);
-  
+
   // record this node's unexplored exits
   
   if ( ((dir == NORTH) && found_straight) || ((dir == EAST) && found_left) || ((dir == WEST) && found_right) )
@@ -252,41 +263,60 @@ void update_map(uint8_t seg_length)
     // west exit (record as east exit in the node to the west)    
     if (get_east_marks(here.x - 1, here.y) == NO_EXIT)
       zero_east_marks(here.x - 1, here.y);
-  }       
+  }     
+  
+      
+  // store # of marks in each direction
+  dir_marks[NORTH] = get_north_marks(here.x, here.y);
+  dir_marks[EAST]  = get_east_marks(here.x, here.y);
+  dir_marks[SOUTH] = get_north_marks(here.x, here.y - 1);
+  dir_marks[WEST]  = get_east_marks(here.x - 1, here.y);
+  
+      clear();
+      lcd_goto_xy(0, 0);
+      print_long(seg_length);
+        lcd_goto_xy(0,1);
+
+        print_long(dir_marks[left_of(dir)]);
+        print_long(dir_marks[(dir)]);
+        print_long(dir_marks[right_of(dir)]);
+        print_long(dir_marks[flip(dir)]);
+        //wait_for_button(BUTTON_B);           
 }  
 
 char select_turn()
 {
+  // check which dirs have 1 or 2 marks (exclude dirs flagged with no exit)
+  bool left_marked     = dir_marks[left_of(dir)] && (dir_marks[left_of(dir)] != NO_EXIT);
+  bool straight_marked = dir_marks[dir] && (dir_marks[dir] != NO_EXIT);
+  bool right_marked    = dir_marks[right_of(dir)] && (dir_marks[right_of(dir)] != NO_EXIT);
+  
+  if ((left_marked || straight_marked || right_marked) && dir_marks[flip(dir)] == 1)
+  {
+    // we've seen this junction before, but we didn't depart in the direction we just arrived from, so we found a loop; turn around and go back
+    return 'B';
+  }
+  
   unsigned char selected_turn = 'B';
   uint8_t fewest_marks = 2;
-  bool junction_marked = false;
-
+  
   if (found_left && (dir_marks[left_of(dir)] < fewest_marks))
   {
-    junction_marked = true;
     selected_turn = 'L';
     fewest_marks = dir_marks[left_of(dir)];
   }
   if (found_straight && (dir_marks[dir] < fewest_marks))
   {
-    junction_marked = true;
     selected_turn = 'S';
     fewest_marks = dir_marks[dir];
   }
   if (found_right && (dir_marks[right_of(dir)] < fewest_marks))
   {
-    junction_marked = true;
     selected_turn = 'R';
     fewest_marks = dir_marks[right_of(dir)];
-  }
+  }  
   
-  if (junction_marked && dir_marks[flip(dir)] == 1)
-  {
-    // we've seen this junction before, but we didn't depart in the direction we just arrived from, so we found a loop; turn around and go back
-    return 'B';
-  }    
-  
-  if ((!(found_left || found_straight || found_right) || fewest_marks == 2) && dir_marks[flip(dir)] >= 2)
+  if ((fewest_marks == 2) && dir_marks[flip(dir)] >= 2)
   {
     // we've arrived back at the start (didn't find the finish)
     // there might be 3 marks in the direction we came from if we originally started in the middle of a segment:
@@ -302,30 +332,30 @@ char select_turn()
 
 void turn(char turn_dir)
 {
-	switch(turn_dir)
-	{
-	case 'L':
-		// Turn left.
+  switch(turn_dir)
+  {
+  case 'L':
+    // Turn left.
     dir = left_of(dir);
-		set_motors(-80,80);
-		delay_ms(200);
-		break;
-	case 'R':
-		// Turn right.
+    set_motors(-80,80);
+    delay_ms(200);
+    break;
+  case 'R':
+    // Turn right.
     dir = right_of(dir);
-		set_motors(80,-80);
-		delay_ms(200);
-		break;
-	case 'B':
-		// Turn around.
+    set_motors(80,-80);
+    delay_ms(200);
+    break;
+  case 'B':
+    // Turn around.
     dir = flip(dir);
-		set_motors(80,-80);
-		delay_ms(400);
-		break;
-	case 'S':
-		// Don't do anything!
-		break;
-	}
+    set_motors(80,-80);
+    delay_ms(400);
+    break;
+  case 'S':
+    // Don't do anything!
+    break;
+  }
 }
 
 bool go_to_nearest_unexplored_exit()
@@ -343,7 +373,7 @@ void map_maze()
   here = start;
   
   clear_map();
-  //maze[start.x][start.y] |= (NORTH_EXIT | NORTH_EXIT_EXPLORED);
+  zero_north_marks(here.x, here.y);
 
   // Loop until we have solved the maze.
   while(1)
@@ -401,7 +431,10 @@ void map_maze()
     uint8_t seg_length = (((end_ms - start_ms) - 140) + 334) / 668;
 
     update_map(seg_length);
-
+    
+    char turn_dir = select_turn();
+    if (turn_dir == 'X')
+      break;
     turn(select_turn());
   }
 
