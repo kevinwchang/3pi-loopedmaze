@@ -2,123 +2,220 @@
  * This file contains the maze-solving strategy.
  */
 
+#include <stdbool.h>
 #include <pololu/3pi.h>
 #include "follow-segment.h"
 #include "turn.h"
 
-// The path variable will store the path that the robot has taken.  It
-// is stored as an array of characters, each of which represents the
-// turn that should be made at one intersection in the sequence:
-//  'L' for left
-//  'R' for right
-//  'S' for straight (going straight through an intersection)
-//  'B' for back (U-turn)
-//
-// Whenever the robot makes a U-turn, the path can be simplified by
-// removing the dead end.  The follow_next_turn() function checks for
-// this case every time it makes a turn, and it simplifies the path
-// appropriately.
-char path[100] = "";
-unsigned char path_length = 0; // the length of the path
+#define MAZE_SIZE 16
 
-// Displays the current path on the LCD, using two rows if necessary.
-void display_path()
+/*
+    +y
+ -x    +x 
+    -y
+*/
+
+uint8_t maze[MAZE_SIZE][MAZE_SIZE]; // x, y
+
+#define NORTH 0
+#define SOUTH 1
+#define EAST  2
+#define WEST  3
+
+#define flip(dir) (dir ^ 1)
+
+#define NORTH_EXIT  (1 << NORTH)
+#define SOUTH_EXIT  (1 << SOUTH)
+#define EAST_EXIT   (1 << EAST)
+#define WEST_EXIT   (1 << WEST)
+
+#define NORTH_EXIT_EXPLORED (NORTH_EXIT << 4)
+#define SOUTH_EXIT_EXPLORED (SOUTH_EXIT << 4)
+#define EAST_EXIT_EXPLORED  (EAST_EXIT  << 4)
+#define WEST_EXIT_EXPLORED  (WEST_EXIT  << 4)
+
+typedef struct pos
 {
-  // Set the last character of the path to a 0 so that the print()
-  // function can find the end of the string.  This is how strings
-  // are normally terminated in C.
-  path[path_length] = 0;
+  int8_t x;
+  int8_t y;
+} pos;
 
-  clear();
-  print(path);
+uint8_t dir;
+pos start, here, finish;
+bool found_finish;
 
-  if(path_length > 8)
+void clear_map()
+{
+  for (uint8_t y = 0; y < MAZE_SIZE; y++)
   {
-    lcd_goto_xy(0,1);
-    print(path+8);
+    for (uint8_t x = 0; x < MAZE_SIZE; x++)
+      maze[x][y] = 0;
   }
 }
 
-// This function decides which way to turn during the learning phase of
-// maze solving.  It uses the variables found_left, found_straight, and
-// found_right, which indicate whether there is an exit in each of the
-// three directions, applying the "left hand on the wall" strategy.
-char select_turn(unsigned char found_left, unsigned char found_straight, unsigned char found_right)
+void shift_map_north(uint8_t amt)
 {
-  // Make a decision about how to turn.  The following code
-  // implements a left-hand-on-the-wall strategy, where we always
-  // turn as far to the left as possible.
-  if(found_left)
-    return 'L';
-  else if(found_straight)
-    return 'S';
-  else if(found_right)
-    return 'R';
-  else
-    return 'B';
+  for (uint8_t y = (MAZE_SIZE - 1); y >= 0; y--) 
+  {
+    for (uint8_t x = 0; x < MAZE_SIZE; x++)
+    {
+      if (y >= amt)
+        maze[x][y] = maze[x][y - amt];
+      else
+        maze[x][y] = 0;
+    }
+  }
+  
+  start.y  += amt;
+  here.y   += amt;
+  finish.y += amt;
 }
 
-// Path simplification.  The strategy is that whenever we encounter a
-// sequence xBx, we can simplify it by cutting out the dead end.  For
-// example, LBL -> S, because a single S bypasses the dead end
-// represented by LBL.
-void simplify_path()
+void shift_map_south(uint8_t amt)
 {
-  // only simplify the path if the second-to-last turn was a 'B'
-  if(path_length < 3 || path[path_length-2] != 'B')
-    return;
-
-  int total_angle = 0;
-  int i;
-  for(i=1;i<=3;i++)
+  for (uint8_t y = 0; y < MAZE_SIZE; y++)
   {
-    switch(path[path_length-i])
+    for (uint8_t x = 0; x < MAZE_SIZE; x++)
     {
-    case 'R':
-      total_angle += 90;
+      if (y < (MAZE_SIZE - amt))
+        maze[x][y] = maze[x][y + amt];
+      else
+        maze[x][y] = 0;
+    }
+  }
+  
+  start.y  -= amt;
+  here.y   -= amt;
+  finish.y -= amt;
+}
+
+void shift_map_east(uint8_t amt)
+{
+  for (uint8_t x = (MAZE_SIZE - 1); x >= 0; x--)
+  {
+    for (uint8_t y = 0; y < MAZE_SIZE; y++)
+    {
+      if (x >= amt)
+      maze[x][y] = maze[x - amt][y];
+      else
+      maze[x][y] = 0;
+    }
+  }
+  
+   start.x  += amt;
+   here.x   += amt;
+   finish.x += amt;
+}
+
+void shift_map_west(uint8_t amt)
+{
+  for (uint8_t x = 0; x < MAZE_SIZE; x++)
+  {
+    for (uint8_t y = 0; y < MAZE_SIZE; y++)
+    {
+      if (x < (MAZE_SIZE - amt))
+      maze[x][y] = maze[x + amt][y];
+      else
+      maze[x][y] = 0;
+    }
+  }
+  
+  start.x  -= amt;
+  here.x   -= amt;
+  finish.x -= amt;
+}
+
+void update_map(uint8_t seg_length, bool found_left, bool found_straight, bool found_right)
+{
+  pos prev = here;
+  
+  switch(dir)
+  {
+    case NORTH:
+    {
+      here.y -= seg_length;
+      
+      if (here.y < 0)
+        shift_map_south(-here.y);
+      
+      for (uint8_t y = (prev.y + 1); y < here.y; y++)
+        maze[here.x][y] |= (SOUTH_EXIT | SOUTH_EXIT_EXPLORED | NORTH_EXIT | NORTH_EXIT_EXPLORED);
+        
+      maze[here.x][here.y] |= (SOUTH_EXIT | SOUTH_EXIT_EXPLORED);
+      
+      if (found_left)
+        maze[here.x][here.y] |= WEST_EXIT;
+      if (found_straight)
+        maze[here.x][here.y] |= NORTH_EXIT;
+      if (found_right)
+        maze[here.x][here.y] |= EAST_EXIT;
+      
+      break;  
+    } 
+    case SOUTH:
+    {
+      here.y += seg_length;
+      
+      if (here.y >= MAZE_SIZE)
+        shift_map_north(here.y - (MAZE_SIZE - 1));
+
+      for (uint8_t y = (prev.y - 1); y > here.y; y--)
+        maze[here.x][y] |= (NORTH_EXIT | NORTH_EXIT_EXPLORED | SOUTH_EXIT | SOUTH_EXIT_EXPLORED);
+      
+      maze[here.x][here.y] |= (NORTH_EXIT | NORTH_EXIT_EXPLORED);
+      
+      if (found_left)
+        maze[here.x][here.y] |= EAST_EXIT;
+      if (found_straight)
+        maze[here.x][here.y] |= SOUTH_EXIT;
+      if (found_right)
+        maze[here.x][here.y] |= NORTH_EXIT;
+        
       break;
-    case 'L':
-      total_angle += 270;
+    }
+    case EAST:
+    {
+      here.x += seg_length;
+      
+      if (here.x >= MAZE_SIZE)
+      shift_map_west(here.x - (MAZE_SIZE - 1));
+      
       break;
-    case 'B':
-      total_angle += 180;
+    }
+    case WEST:
+    {
+      here.x -= seg_length;
+      
+      if (here.x < 0)
+      shift_map_east(-here.x);
+      
       break;
     }
   }
+}  
 
-  // Get the angle as a number between 0 and 360 degrees.
-  total_angle = total_angle % 360;
-
-  // Replace all of those turns with a single one.
-  switch(total_angle)
-  {
-  case 0:
-    path[path_length - 3] = 'S';
-    break;
-  case 90:
-    path[path_length - 3] = 'R';
-    break;
-  case 180:
-    path[path_length - 3] = 'B';
-    break;
-  case 270:
-    path[path_length - 3] = 'L';
-    break;
-  }
-
-  // The path is now two steps shorter.
-  path_length -= 2;
+char select_turn()
+{
+  return 0;
 }
 
 // This function is called once, from main.c.
-void maze_solve()
+void map_maze()
 {
+  found_finish = 0;
+  
+  dir = NORTH;
+  start = (pos){ MAZE_SIZE / 2, MAZE_SIZE / 2 };
+  here = start;
+  
+  clear_map();
+  maze[start.x][start.y] |= (NORTH_EXIT | NORTH_EXIT_EXPLORED);
+
   // Loop until we have solved the maze.
   while(1)
   {
     unsigned int start_ms = get_ms();
     
-    // FIRST MAIN LOOP BODY  
     follow_segment();
 
     // Drive straight a bit.  This helps us in case we entered the
@@ -131,9 +228,9 @@ void maze_solve()
     // These variables record whether the robot has seen a line to the
     // left, straight ahead, and right, whil examining the current
     // intersection.
-    unsigned char found_left=0;
-    unsigned char found_straight=0;
-    unsigned char found_right=0;
+    uint8_t found_left=0;
+    uint8_t found_straight=0;
+    uint8_t found_right=0;
 
     // Now read the sensors and check the intersection type.
     unsigned int sensors[5];
@@ -161,35 +258,29 @@ void maze_solve()
     // If all three middle sensors are on dark black, we have
     // solved the maze.
     if(sensors[1] > 600 && sensors[2] > 600 && sensors[3] > 600)
-      break;
+    {
+      found_left = 0;
+      found_straight = 0;
+      found_right = 0;
+    }
+    
+    set_motors(0, 0);
+    
+    // empirically determined: length = (ms - 140) / 668
+    uint8_t seg_length = (((end_ms - start_ms) - 140) + 334) / 668;
+
+    update_map(seg_length, found_left, found_straight, found_right);
 
     // Intersection identification is complete.
     // If the maze has been solved, we can follow the existing
     // path.  Otherwise, we need to learn the solution.
-    unsigned char dir = select_turn(found_left, found_straight, found_right);
+    uint8_t dir = select_turn();
 
     // Make the turn indicated by the path.
     turn(dir);
-    
-    // length = (ms - 140) / 668
-    unsigned char length = (((end_ms - start_ms) - 140) + 334) / 668;
-
-    // Store the intersection in the path variable.
-    path[path_length] = dir;
-    path_length ++;
-
-    // You should check to make sure that the path_length does not
-    // exceed the bounds of the array.  We'll ignore that in this
-    // example.
-
-    // Simplify the learned path.
-    simplify_path();
-
-    // Display the path on the LCD.
-    //display_path();
   }
 
-  // Solved the maze!
+  /*// Solved the maze!
 
   // Now enter an infinite loop - we can re-run the maze as many
   // times as we want to.
@@ -241,7 +332,7 @@ void maze_solve()
     follow_segment();
 
     // Now we should be at the finish!  Restart the loop.
-  }
+  }*/
 }
 
 // Local Variables: **

@@ -1,4 +1,4 @@
-void maze_solve();
+void map_maze();
 
 // Local Variables: **
 // mode: C **

@@ -140,7 +140,7 @@ int main()
 	initialize();
 
 	// Call our maze solving routine.
-	maze_solve();
+	map_maze();
 
 	// This part of the code is never reached.  A robot should
 	// never reach the end of its program, or unpredictable behavior
