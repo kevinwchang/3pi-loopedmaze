@@ -3,9 +3,9 @@
  */
 
 #include <stdbool.h>
+#include <avr/pgmspace.h>
 #include <pololu/3pi.h>
 #include "follow-segment.h"
-#include "turn.h"
 
 #define MAZE_SIZE 16
 
@@ -18,21 +18,27 @@
 uint8_t maze[MAZE_SIZE][MAZE_SIZE]; // x, y
 
 #define NORTH 0
-#define SOUTH 1
-#define EAST  2
+#define EAST  1
+#define SOUTH 2
 #define WEST  3
 
-#define flip(dir) (dir ^ 1)
+#define flip(dir) (dir ^ 2)
+#define left_of(dir) ((dir - 1) & 0xF)
+#define right_of(dir) ((dir + 1) & 0xF)
 
-#define NORTH_EXIT  (1 << NORTH)
-#define SOUTH_EXIT  (1 << SOUTH)
-#define EAST_EXIT   (1 << EAST)
-#define WEST_EXIT   (1 << WEST)
+#define dir_exit(dir)           (1 << dir)
+#define exit_explored(exit_dir) (exit_dir << 4)
+#define dir_explored(dir)       exit_explored(dir_exit(dir))
 
-#define NORTH_EXIT_EXPLORED (NORTH_EXIT << 4)
-#define SOUTH_EXIT_EXPLORED (SOUTH_EXIT << 4)
-#define EAST_EXIT_EXPLORED  (EAST_EXIT  << 4)
-#define WEST_EXIT_EXPLORED  (WEST_EXIT  << 4)
+#define NORTH_EXIT dir_exit(NORTH)
+#define EAST_EXIT  dir_exit(EAST)
+#define SOUTH_EXIT dir_exit(SOUTH)
+#define WEST_EXIT  dir_exit(WEST)
+
+#define NORTH_EXIT_EXPLORED dir_explored(NORTH)
+#define EAST_EXIT_EXPLORED  dir_explored(EAST)
+#define SOUTH_EXIT_EXPLORED dir_explored(SOUTH)
+#define WEST_EXIT_EXPLORED  dir_explored(WEST)
 
 typedef struct pos
 {
@@ -131,72 +137,139 @@ void update_map(uint8_t seg_length, bool found_left, bool found_straight, bool f
   
   switch(dir)
   {
-    case NORTH:
-    {
-      here.y -= seg_length;
+    
+  case NORTH:
+    here.y -= seg_length;
       
-      if (here.y < 0)
-        shift_map_south(-here.y);
+    if (here.y < 0)
+      shift_map_south(-here.y);
       
-      for (uint8_t y = (prev.y + 1); y < here.y; y++)
-        maze[here.x][y] |= (SOUTH_EXIT | SOUTH_EXIT_EXPLORED | NORTH_EXIT | NORTH_EXIT_EXPLORED);
+    for (uint8_t y = (prev.y + 1); y < here.y; y++)
+      maze[here.x][y] |= (SOUTH_EXIT | SOUTH_EXIT_EXPLORED | NORTH_EXIT | NORTH_EXIT_EXPLORED);
         
-      maze[here.x][here.y] |= (SOUTH_EXIT | SOUTH_EXIT_EXPLORED);
+    maze[here.x][here.y] |= (SOUTH_EXIT | SOUTH_EXIT_EXPLORED);
       
-      if (found_left)
-        maze[here.x][here.y] |= WEST_EXIT;
-      if (found_straight)
-        maze[here.x][here.y] |= NORTH_EXIT;
-      if (found_right)
-        maze[here.x][here.y] |= EAST_EXIT;
+    if (found_left)
+      maze[here.x][here.y] |= WEST_EXIT;
+    if (found_straight)
+      maze[here.x][here.y] |= NORTH_EXIT;
+    if (found_right)
+      maze[here.x][here.y] |= EAST_EXIT;
       
-      break;  
-    } 
-    case SOUTH:
-    {
-      here.y += seg_length;
-      
-      if (here.y >= MAZE_SIZE)
-        shift_map_north(here.y - (MAZE_SIZE - 1));
+    break;  
 
-      for (uint8_t y = (prev.y - 1); y > here.y; y--)
-        maze[here.x][y] |= (NORTH_EXIT | NORTH_EXIT_EXPLORED | SOUTH_EXIT | SOUTH_EXIT_EXPLORED);
+
+  case SOUTH:
+  
+    here.y += seg_length;
       
-      maze[here.x][here.y] |= (NORTH_EXIT | NORTH_EXIT_EXPLORED);
+    if (here.y >= MAZE_SIZE)
+      shift_map_north(here.y - (MAZE_SIZE - 1));
+
+    for (uint8_t y = (prev.y - 1); y > here.y; y--)
+      maze[here.x][y] |= (NORTH_EXIT | NORTH_EXIT_EXPLORED | SOUTH_EXIT | SOUTH_EXIT_EXPLORED);
       
-      if (found_left)
-        maze[here.x][here.y] |= EAST_EXIT;
-      if (found_straight)
-        maze[here.x][here.y] |= SOUTH_EXIT;
-      if (found_right)
-        maze[here.x][here.y] |= NORTH_EXIT;
+    maze[here.x][here.y] |= (NORTH_EXIT | NORTH_EXIT_EXPLORED);
+      
+    if (found_left)
+      maze[here.x][here.y] |= EAST_EXIT;
+    if (found_straight)
+      maze[here.x][here.y] |= SOUTH_EXIT;
+    if (found_right)
+      maze[here.x][here.y] |= WEST_EXIT;
         
-      break;
-    }
-    case EAST:
-    {
-      here.x += seg_length;
+    break;
+
+
+  case EAST:
+  
+    here.x += seg_length;
       
-      if (here.x >= MAZE_SIZE)
+    if (here.x >= MAZE_SIZE)
       shift_map_west(here.x - (MAZE_SIZE - 1));
       
-      break;
-    }
-    case WEST:
-    {
-      here.x -= seg_length;
+    for (uint8_t x = (prev.x + 1); x < here.x; x++)
+      maze[x][here.y] |= (WEST_EXIT | WEST_EXIT_EXPLORED | EAST_EXIT | EAST_EXIT_EXPLORED);
       
-      if (here.x < 0)
+    maze[here.x][here.y] |= (WEST_EXIT | WEST_EXIT_EXPLORED);
+      
+    if (found_left)
+      maze[here.x][here.y] |= NORTH_EXIT;
+    if (found_straight)
+      maze[here.x][here.y] |= EAST_EXIT;
+    if (found_right)
+      maze[here.x][here.y] |= SOUTH_EXIT;
+	  
+    break;
+
+
+  case WEST:
+  
+    here.x -= seg_length;
+      
+    if (here.x < 0)
       shift_map_east(-here.x);
       
-      break;
-    }
-  }
+    for (uint8_t x = (prev.x - 1); x > here.x; x--)
+      maze[x][here.y] |= (EAST_EXIT | EAST_EXIT_EXPLORED | WEST_EXIT | WEST_EXIT_EXPLORED);
+      
+    maze[here.x][here.y] |= (EAST_EXIT | EAST_EXIT_EXPLORED);
+      
+    if (found_left)
+      maze[here.x][here.y] |= SOUTH_EXIT;
+    if (found_straight)
+      maze[here.x][here.y] |= WEST_EXIT;
+    if (found_right)
+      maze[here.x][here.y] |= NORTH_EXIT;
+
+    break;
+  }    
 }  
 
-char select_turn()
+// returns first unexplored exit of { S, L, R }; 0 if no unexplored exits
+char select_turn(bool found_left, bool found_straight, bool found_right)
 {
-  return 0;
+  if (found_straight && !(maze[here.x][here.y] & dir_explored(dir)))
+    return 'S';
+  else if (found_left && !(maze[here.x][here.y] & dir_explored(left_of(dir))))
+    return 'L';
+  else if (found_right && !(maze[here.x][here.y] & dir_explored(right_of(dir))))
+    return 'R';
+  else
+    return 0;
+}
+
+void turn(char turn_dir)
+{
+	switch(turn_dir)
+	{
+	case 'L':
+		// Turn left.
+    dir = left_of(dir);
+		set_motors(-80,80);
+		delay_ms(200);
+		break;
+	case 'R':
+		// Turn right.
+    dir = right_of(dir);
+		set_motors(80,-80);
+		delay_ms(200);
+		break;
+	case 'B':
+		// Turn around.
+    dir = flip(dir);
+		set_motors(80,-80);
+		delay_ms(400);
+		break;
+	case 'S':
+		// Don't do anything!
+		break;
+	}
+}
+
+bool go_to_nearest_unexplored_exit()
+{
+  return false;
 }
 
 // This function is called once, from main.c.
@@ -264,6 +337,10 @@ void map_maze()
       found_right = 0;
     }
     
+    // Intersection identification is complete.
+    
+    // stop motors to prevent too much untracked movement during the following computations (if they take too long)
+    // might not be necessary...
     set_motors(0, 0);
     
     // empirically determined: length = (ms - 140) / 668
@@ -271,13 +348,20 @@ void map_maze()
 
     update_map(seg_length, found_left, found_straight, found_right);
 
-    // Intersection identification is complete.
-    // If the maze has been solved, we can follow the existing
-    // path.  Otherwise, we need to learn the solution.
-    uint8_t dir = select_turn();
-
-    // Make the turn indicated by the path.
-    turn(dir);
+    char turn_dir = select_turn(found_left, found_straight, found_right);
+    
+    if (turn_dir)
+    {
+      // there is an unexplored exit, so go that way
+      turn(turn_dir);
+    }      
+    else
+    {
+      if (!go_to_nearest_unexplored_exit())
+      {
+        return;
+      }
+    }
   }
 
   /*// Solved the maze!
