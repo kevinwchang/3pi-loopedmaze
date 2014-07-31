@@ -388,9 +388,7 @@ void map_maze()
     // solved the maze.
     if(sensors[1] > 600 && sensors[2] > 600 && sensors[3] > 600)
     {
-      found_left = 0;
-      found_straight = 0;
-      found_right = 0;
+      break;
     }
     
     // Intersection identification is complete.
@@ -404,21 +402,12 @@ void map_maze()
 
     update_map(seg_length);
 
-    char turn_dir = select_turn();
-    
-    if (turn_dir)
-    {
-      // there is an unexplored exit, so go that way
-      turn(turn_dir);
-    }
-    else
-    {
-      if (!go_to_nearest_unexplored_exit())
-      {
-        return;
-      }
-    }
+    turn(select_turn());
   }
+
+  set_motors(0,0);
+  play(">>a32");
+  while(1);
 
   /*// Solved the maze!
 
