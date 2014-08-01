@@ -96,8 +96,9 @@ uint8_t path_length = 0; // the length of the path
 void display_path()
 {
   char buf[17];
+  uint8_t i;
 
-  for (uint8_t i = 0; (i < path_length) && (i < 8); i++)
+  for (i = 0; (i < path_length) && (i < 8); i++)
   {
     buf[2*i] = path_seg_lengths[i];
     buf[2*i+1] = path[i];
@@ -547,6 +548,7 @@ void map_maze()
 
   // Solved the maze!
   
+  set_motors(0, 0);
   fill_all_costs();
   build_path();  
   
@@ -555,9 +557,7 @@ void map_maze()
   // times as we want to.
   while(1)
   {    
-    set_motors(0,0);
-
-    // Wait for the user to press a button, while displaying
+   // Wait for the user to press a button, while displaying
     // the solution.
     while(!button_is_pressed(BUTTON_B))
     {
@@ -574,12 +574,11 @@ void map_maze()
     }
     while(button_is_pressed(BUTTON_B));
   
-    /*delay_ms(1000);
+    delay_ms(1000);
 
     // Re-run the maze.  It's not necessary to identify the
     // intersections, so this loop is really simple.
-    int i;
-    for(i=0;i<path_length;i++)
+    for(uint8_t i = 0; i < (path_length - 1); i++) // path ends with 'X'
     {
       // SECOND MAIN LOOP BODY  
       follow_segment();
@@ -596,7 +595,8 @@ void map_maze()
     }
     
     // Follow the last segment up to the finish.
-    follow_segment();*/
+    follow_segment();
+    set_motors(0, 0);
 
     // Now we should be at the finish!  Restart the loop.
   }
