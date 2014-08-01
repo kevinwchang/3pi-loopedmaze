@@ -616,26 +616,19 @@ void map_maze()
 
     // Re-run the maze.  It's not necessary to identify the
     // intersections, so this loop is really simple.
-    
-    uint8_t i = 0;
-    
-    if (path[i] == 'B')
-    {
-      turn('B');
-      i++;
-    }
-    
-    
-    for(; i < (path_length - 1); i++) // path ends with 'X'
+    for(uint8_t i = 0; i < (path_length - 1); i++) // path ends with 'X'
     {
       // SECOND MAIN LOOP BODY  
-      follow_segment();
+      if (path_seg_lengths[i] > 0)
+      {
+        follow_segment();
 
-      // Drive straight while slowing down, as before.
-      set_motors(50,50);
-      delay_ms(50);
-      set_motors(40,40);
-      delay_ms(200);
+        // Drive straight while slowing down, as before.
+        set_motors(50,50);
+        delay_ms(50);
+        set_motors(40,40);
+        delay_ms(200);
+      }      
 
       // Make a turn according to the instruction stored in
       // path[i].
