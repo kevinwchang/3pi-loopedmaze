@@ -3,6 +3,7 @@
  */
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <pololu/3pi.h>
 #include "follow-segment.h"
 #include "sounds.h"
@@ -51,10 +52,10 @@ node maze[MAZE_SIZE][MAZE_SIZE]; // x, y
 
 #define get_north_marks(x, y) ((maze[x][y].marks & NORTH_MARK_MASK) >> NORTH_LSB)
 #define get_east_marks(x, y)  ((maze[x][y].marks & EAST_MARK_MASK) >> EAST_LSB)
-
 #define add_north_mark(x, y) (maze[x][y].marks += NORTH_MARK)
 #define add_east_mark(x, y)  (maze[x][y].marks += EAST_MARK)
 
+#define get_dir_to_finish(x, y) ((maze[x][y].marks & DIR_TO_FINISH_MASK) >> DIR_TO_FINISH_LSB)
 #define set_dir_to_finish(x, y, dir) (maze[x][y].marks = ((maze[x][y].marks & ~DIR_TO_FINISH_MASK) | ((dir) << DIR_TO_FINISH_LSB)))
 
 
@@ -66,6 +67,8 @@ typedef struct pos
   int8_t y;
 } pos;
 
+#define distance_between(a, b) (abs((b).x - (a).x) + abs((b).y - (a).y))
+
 uint8_t dir;
 pos start, here, finish;
 bool found_finish;
@@ -75,7 +78,8 @@ bool found_left, found_straight, found_right;
 uint8_t dir_marks[4];
 
 
-pos fill_pos;
+// used to pass info in fill_costs_from_node() recursion
+
 uint8_t fill_cost, fill_dir_to_finish;
 
 
@@ -83,25 +87,30 @@ uint8_t fill_cost, fill_dir_to_finish;
 
 #define MAX_PATH_LENGTH 100
 
-char path[MAX_PATH_LENGTH] = "";
+char path[MAX_PATH_LENGTH];
+uint8_t path_seg_lengths[MAX_PATH_LENGTH];
 uint8_t path_length = 0; // the length of the path
 
 
 // Displays the current path on the LCD, using two rows if necessary.
 void display_path()
 {
-  // Set the last character of the path to a 0 so that the print()
-  // function can find the end of the string.  This is how strings
-  // are normally terminated in C.
-  path[path_length] = 0;
+  char buf[17];
 
+  for (uint8_t i = 0; (i < path_length) && (i < 8); i++)
+  {
+    buf[2*i] = path_seg_lengths[i];
+    buf[2*i+1] = path[i];
+  }
+  buf[2*i] = 0;
+  
   clear();
-  print(path);
+  print(buf);
 
-  if(path_length > 8)
+  if(path_length > 4)
   {
     lcd_goto_xy(0,1);
-    print(path+8);
+    print(buf+8);
   }
 }
 
@@ -324,44 +333,43 @@ void turn(char turn_dir)
   }
 }
 
-// returns true if found path to finish
 // using global vars instead of function params to keep track of stuff should cut down on RAM usage at the cost of slower execution
 void fill_costs_from_node()
 {
-  if (fill_cost < maze[fill_pos.x][fill_pos.y].cost)
+  if (fill_cost < maze[here.x][here.y].cost)
   {
-     maze[fill_pos.x][fill_pos.y].cost = fill_cost;
-    set_dir_to_finish(fill_pos.x, fill_pos.y, fill_dir_to_finish);
+     maze[here.x][here.y].cost = fill_cost;
+    set_dir_to_finish(here.x, here.y, fill_dir_to_finish);
     
     fill_cost++;
     
-    if (get_north_marks(fill_pos.x, fill_pos.y))
+    if (get_north_marks(here.x, here.y))
     {
       fill_dir_to_finish = SOUTH;
-      fill_pos.y++;
+      here.y++;
       fill_costs_from_node();
-      fill_pos.y--;
+      here.y--;
     }      
-    if (get_east_marks(fill_pos.x, fill_pos.y))
+    if (get_east_marks(here.x, here.y))
     {
       fill_dir_to_finish = WEST;
-      fill_pos.x++;
+      here.x++;
       fill_costs_from_node();
-      fill_pos.x--;
+      here.x--;
     }      
-    if (get_north_marks(fill_pos.x, fill_pos.y - 1))
+    if (get_north_marks(here.x, here.y - 1))
     {
       fill_dir_to_finish = NORTH;
-      fill_pos.y--;
+      here.y--;
       fill_costs_from_node();
-      fill_pos.y++;
+      here.y++;
     }      
-    if (get_east_marks(fill_pos.x - 1, fill_pos.y))
+    if (get_east_marks(here.x - 1, here.y))
     {
       fill_dir_to_finish = EAST;
-      fill_pos.x--;
+      here.x--;
       fill_costs_from_node();
-      fill_pos.x++;
+      here.x++;
     }      
       
     fill_cost--;
@@ -371,14 +379,79 @@ void fill_costs_from_node()
 void fill_all_costs()
 {
   fill_cost = 0;
-  fill_pos = finish;
+  here = finish;
   
   fill_costs_from_node(); // dir_to_finish is meaningless for finish node
 }
 
+void add_path_segment(char turn_dir, uint8_t seg_length)
+{
+  path[path_length] = turn_dir;
+  path_seg_lengths[path_length] = seg_length;
+  seg_length++;
+}
+
 void build_path()
 {
+  uint8_t dtf;
+  pos prev = start;
+  here = start;
+  dir = NORTH;
   
+  while ( !((here.x == finish.x) && (here.y == finish.y)) )
+  {
+    dtf = get_dir_to_finish(here.x, here.y);
+    dir_marks[NORTH] = get_north_marks(here.x, here.y);
+    dir_marks[EAST]  = get_east_marks(here.x, here.y);
+    dir_marks[SOUTH] = get_north_marks(here.x, here.y - 1);
+    dir_marks[WEST]  = get_east_marks(here.x - 1, here.y);
+      
+    // only add 'S' if there's an intersection (left or right exit)
+    if ((dtf == dir) && (dir_marks[left_of(dir)] || dir_marks[right_of(dir)]))
+    {
+      add_path_segment('S', distance_between(prev, here));
+      prev = here;
+    }
+    
+    if (dtf == left_of(dir))
+    {
+      add_path_segment('L', distance_between(prev, here));
+      prev = here;
+    }
+    
+    if (dtf == right_of(dir))
+    {
+      add_path_segment('L', distance_between(prev, here));
+      prev = here;
+    }
+    
+    if (dtf == flip(dir))
+    {
+      // this should only happen as the very first turn
+      add_path_segment('B', distance_between(prev, here));
+      prev = here;
+    }
+    
+    dir = dtf;
+    
+    switch (dir)
+    {
+    case NORTH:
+      here.y++;
+      break;
+    case EAST:
+      here.x++;
+      break;
+    case SOUTH:
+      here.y--;
+      break;
+    case WEST:
+      here.x--;
+      break;    
+    }
+  }
+  
+  add_path_segment('X', distance_between(prev, here));
 }
 
 // This function is called once, from main.c.
