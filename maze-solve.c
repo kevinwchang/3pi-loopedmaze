@@ -8,7 +8,7 @@
 #include "follow-segment.h"
 #include "sounds.h"
 
-#define MAZE_SIZE 8
+#define MAZE_SIZE 16
 #define MAX_COST 255
 
 /*
@@ -278,7 +278,7 @@ void update_map(uint8_t seg_length)
   print_long(dir_marks[left_of(dir)]);
   print_long(dir_marks[flip(dir)]);
   print_long(dir_marks[right_of(dir)]);
-  lcd_goto_xy(3, 0);
+  lcd_goto_xy(3, 1);
   switch(dir)
   {
     case NORTH: print_character('N'); break;
@@ -291,9 +291,11 @@ void update_map(uint8_t seg_length)
   print_long(here.x);
   lcd_goto_xy(5, 1);
   print_character('y');
-  print_long(here.y);
-  wait_for_button(BUTTON_B);
-  delay(200);*/
+  print_long(here.y);*/
+  lcd_goto_xy(0, 1);
+  print_long(seg_length);
+  //wait_for_button(BUTTON_B);
+  //delay(200);
 }  
 
 char select_turn()
