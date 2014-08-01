@@ -80,7 +80,7 @@ uint8_t dir_marks[4];
 
 // used to pass info in fill_costs_from_node() recursion
 
-uint8_t fill_cost, fill_dir_to_finish;
+uint8_t cost_here, dir_to_finish_here;
 
 
 // final path
@@ -335,57 +335,61 @@ void turn(char turn_dir)
 }
 
 // using global vars instead of function params to keep track of stuff should cut down on RAM usage at the cost of slower execution
-void fill_costs_from_node()
+void fill_costs_from_here()
 {
-  if (fill_cost < maze[here.x][here.y].cost)
+  if (cost_here < maze[here.x][here.y].cost)
   {
-     maze[here.x][here.y].cost = fill_cost;
-    set_dir_to_finish(here.x, here.y, fill_dir_to_finish);
+     maze[here.x][here.y].cost = cost_here;
+    set_dir_to_finish(here.x, here.y, dir_to_finish_here);
     
-    fill_cost++;
-    
-    if ((fill_cost + distance_between(here, finish)) < maze[start.x][start.y].cost)
+    if ((distance_between(start, here) + cost_here) < maze[start.x][start.y].cost)
     {
+      cost_here++;
+      
       if (get_north_marks(here.x, here.y) )
       {
-        fill_dir_to_finish = SOUTH;
+        // north exit
+        dir_to_finish_here = SOUTH;
         here.y++;
-        fill_costs_from_node();
+        fill_costs_from_here();
         here.y--;
       }      
       if (get_east_marks(here.x, here.y))
       {
-        fill_dir_to_finish = WEST;
+        // east exit
+        dir_to_finish_here = WEST;
         here.x++;
-        fill_costs_from_node();
+        fill_costs_from_here();
         here.x--;
       }      
       if (get_north_marks(here.x, here.y - 1))
       {
-        fill_dir_to_finish = NORTH;
+        // south exit
+        dir_to_finish_here = NORTH;
         here.y--;
-        fill_costs_from_node();
+        fill_costs_from_here();
         here.y++;
       }      
       if (get_east_marks(here.x - 1, here.y))
       {
-        fill_dir_to_finish = EAST;
+        // west exit
+        dir_to_finish_here = EAST;
         here.x--;
-        fill_costs_from_node();
+        fill_costs_from_here();
         here.x++;
       }
       
-      fill_cost--;
+      cost_here--;
     }
   }    
 }
 
 void fill_all_costs()
 {
-  fill_cost = 0;
+  cost_here = 0;
   here = finish;
   
-  fill_costs_from_node(); // dir_to_finish is meaningless for finish node
+  fill_costs_from_here(); // dir_to_finish is meaningless for finish node
 }
 
 void add_path_segment(char turn_dir, uint8_t seg_length)
@@ -397,46 +401,45 @@ void add_path_segment(char turn_dir, uint8_t seg_length)
 
 void build_path()
 {
-  uint8_t dtf;
   pos prev = start;
   here = start;
   dir = NORTH;
   
   while ( !((here.x == finish.x) && (here.y == finish.y)) )
   {
-    dtf = get_dir_to_finish(here.x, here.y);
+    dir_to_finish_here = get_dir_to_finish(here.x, here.y);
     dir_marks[NORTH] = get_north_marks(here.x, here.y);
     dir_marks[EAST]  = get_east_marks(here.x, here.y);
     dir_marks[SOUTH] = get_north_marks(here.x, here.y - 1);
     dir_marks[WEST]  = get_east_marks(here.x - 1, here.y);
       
     // only add 'S' if there's an intersection (left or right exit)
-    if ((dtf == dir) && (dir_marks[left_of(dir)] || dir_marks[right_of(dir)]))
+    if ((dir_to_finish_here == dir) && (dir_marks[left_of(dir)] || dir_marks[right_of(dir)]))
     {
       add_path_segment('S', distance_between(prev, here));
       prev = here;
     }
     
-    if (dtf == left_of(dir))
+    if (dir_to_finish_here == left_of(dir))
     {
       add_path_segment('L', distance_between(prev, here));
       prev = here;
     }
     
-    if (dtf == right_of(dir))
+    if (dir_to_finish_here == right_of(dir))
     {
       add_path_segment('R', distance_between(prev, here));
       prev = here;
     }
     
-    if (dtf == flip(dir))
+    if (dir_to_finish_here == flip(dir))
     {
       // this should only happen as the very first turn
       add_path_segment('B', distance_between(prev, here));
       prev = here;
     }
     
-    dir = dtf;
+    dir = dir_to_finish_here;
     
     switch (dir)
     {
@@ -542,6 +545,7 @@ void map_maze()
     {
       // Beep to show that we finished the maze.
       play("!>>a32");
+      turn('B');
       break;
     }      
       
@@ -581,7 +585,17 @@ void map_maze()
 
     // Re-run the maze.  It's not necessary to identify the
     // intersections, so this loop is really simple.
-    for(uint8_t i = 0; i < (path_length - 1); i++) // path ends with 'X'
+    
+    uint8_t i = 0;
+    
+    if (path[i] == 'B')
+    {
+      turn('B');
+      i++;
+    }
+    
+    
+    for(; i < (path_length - 1); i++) // path ends with 'X'
     {
       // SECOND MAIN LOOP BODY  
       follow_segment();
