@@ -66,6 +66,7 @@
         </dependencies>
       </framework-data>
     </AsfFrameworkConfig>
+    <preserveEEPROM>True</preserveEEPROM>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <ToolchainSettings>
@@ -119,6 +120,9 @@
     <Compile Include="bargraph.c">
       <SubType>compile</SubType>
     </Compile>
+    <Compile Include="calibrate.c">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="follow-segment.c">
       <SubType>compile</SubType>
     </Compile>
@@ -126,6 +130,9 @@
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="maze-solve.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="sounds.c">
       <SubType>compile</SubType>
     </Compile>
   </ItemGroup>

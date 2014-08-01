@@ -3,9 +3,9 @@
  */
 
 #include <stdbool.h>
-#include <avr/pgmspace.h>
 #include <pololu/3pi.h>
 #include "follow-segment.h"
+#include "sounds.h"
 
 #define MAZE_SIZE 16
 
@@ -18,10 +18,13 @@
 typedef struct node
 {
   uint8_t cost;
-  uint8_t exits; 
+  uint8_t marks;
 } node;
 
 node maze[MAZE_SIZE][MAZE_SIZE]; // x, y
+
+
+// directions
 
 #define NORTH 0
 #define EAST  1
@@ -32,40 +35,30 @@ node maze[MAZE_SIZE][MAZE_SIZE]; // x, y
 #define left_of(dir) ((dir - 1) & 0x3)
 #define right_of(dir) ((dir + 1) & 0x3)
 
-/*#define dir_exit(dir)           (1 << dir)
-#define exit_explored(exit_dir) (exit_dir << 4)
-#define dir_explored(dir)       exit_explored(dir_exit(dir))
 
-#define NORTH_EXIT dir_exit(NORTH)
-#define EAST_EXIT  dir_exit(EAST)
-#define SOUTH_EXIT dir_exit(SOUTH)
-#define WEST_EXIT  dir_exit(WEST)
-
-#define NORTH_EXIT_EXPLORED dir_explored(NORTH)
-#define EAST_EXIT_EXPLORED  dir_explored(EAST)
-#define SOUTH_EXIT_EXPLORED dir_explored(SOUTH)
-#define WEST_EXIT_EXPLORED  dir_explored(WEST)*/
+// exit info
 
 #define NORTH_LSB 0
 #define EAST_LSB 2
+#define DIR_TO_FINISH_LSB 4
 
 #define NORTH_MARK (1 << NORTH_LSB)
 #define EAST_MARK  (1 << EAST_LSB)
 
 #define NORTH_MARK_MASK (0x3 << NORTH_LSB)
 #define EAST_MARK_MASK  (0x3 << EAST_LSB)
+#define DIR_TO_FINISH_MASK  (0x3 << DIR_TO_FINISH_LSB)
 
-#define NO_EXIT 3
-#define NO_EXITS ((NO_EXIT << NORTH_LSB) | (NO_EXIT << EAST_LSB))
+#define get_north_marks(x, y) ((maze[x][y].marks & NORTH_MARK_MASK) >> NORTH_LSB)
+#define get_east_marks(x, y)  ((maze[x][y].marks & EAST_MARK_MASK) >> EAST_LSB)
 
-#define get_north_marks(x, y) ((maze[x][y].exits & NORTH_MARK_MASK) >> NORTH_LSB)
-#define get_east_marks(x, y)  ((maze[x][y].exits & EAST_MARK_MASK) >> EAST_LSB)
+#define add_north_mark(x, y) (maze[x][y].marks += NORTH_MARK)
+#define add_east_mark(x, y)  (maze[x][y].marks += EAST_MARK)
 
-#define zero_north_marks(x, y) (maze[x][y].exits &= ~NORTH_MARK_MASK)
-#define zero_east_marks(x, y)  (maze[x][y].exits &= ~EAST_MARK_MASK)
+#define set_dir_to_finish(x, y, dir) (maze[x][y].marks = ((maze[x][y].marks & ~DIR_TO_FINISH_MASK) | ((dir) << DIR_TO_FINISH_LSB)))
 
-#define add_north_mark(x, y) (maze[x][y].exits += NORTH_MARK)
-#define add_east_mark(x, y)  (maze[x][y].exits += EAST_MARK)
+
+// state info
 
 typedef struct pos
 {
@@ -76,16 +69,49 @@ typedef struct pos
 uint8_t dir;
 pos start, here, finish;
 bool found_finish;
+bool recorded_finish;
 
 bool found_left, found_straight, found_right;
 uint8_t dir_marks[4];
+
+
+pos fill_pos;
+uint8_t fill_cost, fill_dir_to_finish;
+
+
+// final path
+
+#define MAX_PATH_LENGTH 100
+
+char path[MAX_PATH_LENGTH] = "";
+uint8_t path_length = 0; // the length of the path
+
+
+// Displays the current path on the LCD, using two rows if necessary.
+void display_path()
+{
+  // Set the last character of the path to a 0 so that the print()
+  // function can find the end of the string.  This is how strings
+  // are normally terminated in C.
+  path[path_length] = 0;
+
+  clear();
+  print(path);
+
+  if(path_length > 8)
+  {
+    lcd_goto_xy(0,1);
+    print(path+8);
+  }
+}
+
 
 void clear_map()
 {
   for (uint8_t y = 0; y < MAZE_SIZE; y++)
   {
     for (uint8_t x = 0; x < MAZE_SIZE; x++)
-      maze[x][y] = (node){ .cost = 255, .exits = NO_EXITS };
+      maze[x][y] = (node){ .cost = 255, .marks = 0 };
   }
 }
 
@@ -177,12 +203,8 @@ void update_map(uint8_t seg_length)
       shift_map_south(here.y - (MAZE_SIZE - 1));
       
     for (uint8_t y = prev.y; y < here.y; y++)
-    {
-      if (get_north_marks(here.x, y) == NO_EXIT)
-        zero_north_marks(here.x, y);
       add_north_mark(here.x, y);
-    }      
-
+ 
     break;  
 
 
@@ -194,12 +216,8 @@ void update_map(uint8_t seg_length)
       shift_map_west(here.x - (MAZE_SIZE - 1));
       
     for (uint8_t x = prev.x; x < here.x; x++)
-    {
-      if (get_east_marks(x, here.y) == NO_EXIT)
-        zero_east_marks(x, here.y);
       add_east_mark(x, here.y);
-    }      
-    
+
     break;
 
 
@@ -211,11 +229,7 @@ void update_map(uint8_t seg_length)
       shift_map_north(1 - here.y);  
 
     for (uint8_t y = here.y; y < prev.y; y++)
-    {
-      if (get_north_marks(here.x, y) == NO_EXIT)
-        zero_north_marks(here.x, y);
       add_north_mark(here.x, y);
-    }
         
     break;
     
@@ -228,70 +242,22 @@ void update_map(uint8_t seg_length)
       shift_map_east(1 - here.x);
       
     for (uint8_t x = here.x; x < prev.x; x++)
-    {
-      if (get_east_marks(x, here.y) == NO_EXIT)
-        zero_east_marks(x, here.y);
       add_east_mark(x, here.y);
-    }
 
     break;
   }   
-  
-
-  // record this node's unexplored exits
-  
-  if ( ((dir == NORTH) && found_straight) || ((dir == EAST) && found_left) || ((dir == WEST) && found_right) )
-  {
-    // north exit
-    if (get_north_marks(here.x, here.y) == NO_EXIT)
-      zero_north_marks(here.x, here.y);
-  }
-  if ( ((dir == EAST) && found_straight) || ((dir == SOUTH) && found_left) || ((dir == NORTH) && found_right) )
-  {
-    // east exit
-    if (get_east_marks(here.x, here.y) == NO_EXIT)
-      zero_east_marks(here.x, here.y);
-  }     
-  if ( ((dir == SOUTH) && found_straight) || ((dir == WEST) && found_left) || ((dir == EAST) && found_right) )
-  {
-    // south exit (record as north exit in the node to the south)
-    if (get_north_marks(here.x, here.y - 1) == NO_EXIT)
-      zero_north_marks(here.x, here.y - 1);
-  }       
-  if ( ((dir == WEST) && found_straight) || ((dir == NORTH) && found_left) || ((dir == SOUTH) && found_right) )
-  {
-    // west exit (record as east exit in the node to the west)    
-    if (get_east_marks(here.x - 1, here.y) == NO_EXIT)
-      zero_east_marks(here.x - 1, here.y);
-  }     
-  
+    
       
   // store # of marks in each direction
   dir_marks[NORTH] = get_north_marks(here.x, here.y);
   dir_marks[EAST]  = get_east_marks(here.x, here.y);
   dir_marks[SOUTH] = get_north_marks(here.x, here.y - 1);
-  dir_marks[WEST]  = get_east_marks(here.x - 1, here.y);
-  
-      clear();
-      lcd_goto_xy(0, 0);
-      print_long(seg_length);
-        lcd_goto_xy(0,1);
-
-        print_long(dir_marks[left_of(dir)]);
-        print_long(dir_marks[(dir)]);
-        print_long(dir_marks[right_of(dir)]);
-        print_long(dir_marks[flip(dir)]);
-        //wait_for_button(BUTTON_B);           
+  dir_marks[WEST]  = get_east_marks(here.x - 1, here.y);     
 }  
 
 char select_turn()
-{
-  // check which dirs have 1 or 2 marks (exclude dirs flagged with no exit)
-  bool left_marked     = dir_marks[left_of(dir)] && (dir_marks[left_of(dir)] != NO_EXIT);
-  bool straight_marked = dir_marks[dir] && (dir_marks[dir] != NO_EXIT);
-  bool right_marked    = dir_marks[right_of(dir)] && (dir_marks[right_of(dir)] != NO_EXIT);
-  
-  if ((left_marked || straight_marked || right_marked) && dir_marks[flip(dir)] == 1)
+{  
+  if ((dir_marks[left_of(dir)] || dir_marks[dir] || dir_marks[right_of(dir)]) && dir_marks[flip(dir)] == 1)
   {
     // we've seen this junction before, but we didn't depart in the direction we just arrived from, so we found a loop; turn around and go back
     return 'B';
@@ -318,7 +284,7 @@ char select_turn()
   
   if ((fewest_marks == 2) && dir_marks[flip(dir)] >= 2)
   {
-    // we've arrived back at the start (didn't find the finish)
+    // we've arrived back at the start
     // there might be 3 marks in the direction we came from if we originally started in the middle of a segment:
     //  ___________
     // /   start___)
@@ -358,23 +324,73 @@ void turn(char turn_dir)
   }
 }
 
-bool go_to_nearest_unexplored_exit()
+// returns true if found path to finish
+// using global vars instead of function params to keep track of stuff should cut down on RAM usage at the cost of slower execution
+void fill_costs_from_node()
 {
-  return false;
+  if (fill_cost < maze[fill_pos.x][fill_pos.y].cost)
+  {
+     maze[fill_pos.x][fill_pos.y].cost = fill_cost;
+    set_dir_to_finish(fill_pos.x, fill_pos.y, fill_dir_to_finish);
+    
+    fill_cost++;
+    
+    if (get_north_marks(fill_pos.x, fill_pos.y))
+    {
+      fill_dir_to_finish = SOUTH;
+      fill_pos.y++;
+      fill_costs_from_node();
+      fill_pos.y--;
+    }      
+    if (get_east_marks(fill_pos.x, fill_pos.y))
+    {
+      fill_dir_to_finish = WEST;
+      fill_pos.x++;
+      fill_costs_from_node();
+      fill_pos.x--;
+    }      
+    if (get_north_marks(fill_pos.x, fill_pos.y - 1))
+    {
+      fill_dir_to_finish = NORTH;
+      fill_pos.y--;
+      fill_costs_from_node();
+      fill_pos.y++;
+    }      
+    if (get_east_marks(fill_pos.x - 1, fill_pos.y))
+    {
+      fill_dir_to_finish = EAST;
+      fill_pos.x--;
+      fill_costs_from_node();
+      fill_pos.x++;
+    }      
+      
+    fill_cost--;
+  }
+}
+
+void fill_all_costs()
+{
+  fill_cost = 0;
+  fill_pos = finish;
+  
+  fill_costs_from_node(); // dir_to_finish is meaningless for finish node
+}
+
+void build_path()
+{
+  
 }
 
 // This function is called once, from main.c.
 void map_maze()
 {
-  found_finish = 0;
-  
+  found_finish = recorded_finish = false;
   dir = NORTH;
   start = (pos){ MAZE_SIZE / 2, MAZE_SIZE / 2 };
   here = start;
   
   clear_map();
-  zero_north_marks(here.x, here.y);
-
+  
   // Loop until we have solved the maze.
   while(1)
   {
@@ -418,39 +434,55 @@ void map_maze()
     // solved the maze.
     if(sensors[1] > 600 && sensors[2] > 600 && sensors[3] > 600)
     {
-      break;
+      found_left = found_straight = found_right = false;
+      found_finish = true;
+      play_from_program_space(done);
+    }
+    else if (!is_playing())
+    {
+      play_from_program_space(wakka);
     }
     
     // Intersection identification is complete.
     
     // stop motors to prevent too much untracked movement during the following computations (if they take too long)
     // might not be necessary...
-    set_motors(0, 0);
+    //set_motors(0, 0);
     
     // empirically determined: length = (ms - 140) / 668
     uint8_t seg_length = (((end_ms - start_ms) - 140) + 334) / 668;
 
     update_map(seg_length);
+
+    if (found_finish && !recorded_finish)
+    {
+      finish = here;
+      recorded_finish = true;
+    }
     
     char turn_dir = select_turn();
     if (turn_dir == 'X')
+    {
+      // Beep to show that we finished the maze.
+      play("!>>a32");
       break;
+    }      
+      
     turn(select_turn());
   }
 
-  set_motors(0,0);
-  play(">>a32");
-  while(1);
 
-  /*// Solved the maze!
+  // Solved the maze!
+  
+  fill_all_costs();
+  build_path();  
+  
 
   // Now enter an infinite loop - we can re-run the maze as many
   // times as we want to.
   while(1)
-  {
-    // Beep to show that we finished the maze.
+  {    
     set_motors(0,0);
-    play(">>a32");
 
     // Wait for the user to press a button, while displaying
     // the solution.
@@ -469,7 +501,7 @@ void map_maze()
     }
     while(button_is_pressed(BUTTON_B));
   
-    delay_ms(1000);
+    /*delay_ms(1000);
 
     // Re-run the maze.  It's not necessary to identify the
     // intersections, so this loop is really simple.
@@ -491,10 +523,10 @@ void map_maze()
     }
     
     // Follow the last segment up to the finish.
-    follow_segment();
+    follow_segment();*/
 
     // Now we should be at the finish!  Restart the loop.
-  }*/
+  }
 }
 
 // Local Variables: **

@@ -8,6 +8,7 @@
  */
 
 #include <pololu/3pi.h>
+#include "sounds.h"
 
 void follow_segment()
 {
@@ -16,6 +17,9 @@ void follow_segment()
 
 	while(1)
 	{
+    /*if (!is_playing())
+      play_move_sound();*/
+    
 		// Normally, we will be following a line.  The code below is
 		// similar to the 3pi-linefollower-pid example, but the maximum
 		// speed is turned down to 60 for reliability.

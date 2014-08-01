@@ -24,6 +24,8 @@
 
 #include "bargraph.h"
 #include "maze-solve.h"
+#include "sounds.h"
+#include "calibrate.h"
 
 // Introductory messages.  The "PROGMEM" identifier causes the data to
 // go into program space.
@@ -32,38 +34,25 @@ const char welcome_line2[] PROGMEM = "3\xf7 Robot";
 const char demo_name_line1[] PROGMEM = "Maze";
 const char demo_name_line2[] PROGMEM = "solver";
 
-// A couple of simple tunes, stored in program space.
-const char welcome[] PROGMEM = ">g32>>c32";
-const char go[] PROGMEM = "L16 cdegreg4";
-
 // Initializes the 3pi, displays a welcome message, calibrates, and
 // plays the initial music.
 void initialize()
-{
-	unsigned int counter; // used as a simple timer
-	unsigned int sensors[5]; // an array to hold sensor values
-
+{ 
+  unsigned int sensors[5]; // an array to hold sensor values
+  
 	// This must be called at the beginning of 3pi code, to set up the
 	// sensors.  We use a value of 2000 for the timeout, which
 	// corresponds to 2000*0.4 us = 0.8 ms on our 20 MHz processor.
 	pololu_3pi_init(2000);
 	load_custom_characters(); // load the custom characters
-	
-	// Play welcome music and display a message
-	print_from_program_space(welcome_line1);
-	lcd_goto_xy(0,1);
-	print_from_program_space(welcome_line2);
+  
+  if (!check_stored_calibration() || button_is_pressed(BUTTON_C))
+    perform_calibration(); // loops forever when done
+  
 	play_from_program_space(welcome);
-	delay_ms(1000);
 
-	clear();
-	print_from_program_space(demo_name_line1);
-	lcd_goto_xy(0,1);
-	print_from_program_space(demo_name_line2);
-	delay_ms(1000);
-
-	// Display battery voltage and wait for button press
-	while(!button_is_pressed(BUTTON_B))
+	// Display battery voltage for 2 s or until button press
+	while(millis() < 2000 && !button_is_pressed(BUTTON_B))
 	{
 		int bat = read_battery_millivolts();
 
@@ -75,33 +64,9 @@ void initialize()
 
 		delay_ms(100);
 	}
+  wait_for_button_release(BUTTON_B);
 
-	// Always wait for the button to be released so that 3pi doesn't
-	// start moving until your hand is away from it.
-	wait_for_button_release(BUTTON_B);
-	delay_ms(1000);
-
-	// Auto-calibration: turn right and left while calibrating the
-	// sensors.
-	for(counter=0;counter<80;counter++)
-	{
-		if(counter < 20 || counter >= 60)
-			set_motors(40,-40);
-		else
-			set_motors(-40,40);
-
-		// This function records a set of sensor readings and keeps
-		// track of the minimum and maximum values encountered.  The
-		// IR_EMITTERS_ON argument means that the IR LEDs will be
-		// turned on during the reading, which is usually what you
-		// want.
-		calibrate_line_sensors(IR_EMITTERS_ON);
-
-		// Since our counter runs to 80, the total delay will be
-		// 80*20 = 1600 ms.
-		delay_ms(20);
-	}
-	set_motors(0,0);
+	load_stored_calibration();
 
 	// Display calibrated values as a bar graph.
 	while(!button_is_pressed(BUTTON_B))
