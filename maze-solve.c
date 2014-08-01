@@ -67,7 +67,7 @@ typedef struct pos
   int8_t y;
 } pos;
 
-#define distance_between(a, b) (abs((b).x - (a).x) + abs((b).y - (a).y))
+#define distance_between(a, b) (abs((b).x - (a).x) + abs((b).y - (a).y)) // manhattan distance
 
 uint8_t dir;
 pos start, here, finish;
@@ -100,7 +100,7 @@ void display_path()
 
   for (i = 0; (i < path_length) && (i < 8); i++)
   {
-    buf[2*i] = path_seg_lengths[i];
+    buf[2*i] = '0' + path_seg_lengths[i];
     buf[2*i+1] = path[i];
   }
   buf[2*i] = 0;
@@ -344,37 +344,40 @@ void fill_costs_from_node()
     
     fill_cost++;
     
-    if (get_north_marks(here.x, here.y))
+    if ((fill_cost + distance_between(here, finish)) < maze[start.x][start.y].cost)
     {
-      fill_dir_to_finish = SOUTH;
-      here.y++;
-      fill_costs_from_node();
-      here.y--;
-    }      
-    if (get_east_marks(here.x, here.y))
-    {
-      fill_dir_to_finish = WEST;
-      here.x++;
-      fill_costs_from_node();
-      here.x--;
-    }      
-    if (get_north_marks(here.x, here.y - 1))
-    {
-      fill_dir_to_finish = NORTH;
-      here.y--;
-      fill_costs_from_node();
-      here.y++;
-    }      
-    if (get_east_marks(here.x - 1, here.y))
-    {
-      fill_dir_to_finish = EAST;
-      here.x--;
-      fill_costs_from_node();
-      here.x++;
-    }      
+      if (get_north_marks(here.x, here.y) )
+      {
+        fill_dir_to_finish = SOUTH;
+        here.y++;
+        fill_costs_from_node();
+        here.y--;
+      }      
+      if (get_east_marks(here.x, here.y))
+      {
+        fill_dir_to_finish = WEST;
+        here.x++;
+        fill_costs_from_node();
+        here.x--;
+      }      
+      if (get_north_marks(here.x, here.y - 1))
+      {
+        fill_dir_to_finish = NORTH;
+        here.y--;
+        fill_costs_from_node();
+        here.y++;
+      }      
+      if (get_east_marks(here.x - 1, here.y))
+      {
+        fill_dir_to_finish = EAST;
+        here.x--;
+        fill_costs_from_node();
+        here.x++;
+      }
       
-    fill_cost--;
-  }
+      fill_cost--;
+    }
+  }    
 }
 
 void fill_all_costs()
@@ -389,7 +392,7 @@ void add_path_segment(char turn_dir, uint8_t seg_length)
 {
   path[path_length] = turn_dir;
   path_seg_lengths[path_length] = seg_length;
-  seg_length++;
+  path_length++;
 }
 
 void build_path()
@@ -422,7 +425,7 @@ void build_path()
     
     if (dtf == right_of(dir))
     {
-      add_path_segment('L', distance_between(prev, here));
+      add_path_segment('R', distance_between(prev, here));
       prev = here;
     }
     
@@ -561,7 +564,7 @@ void map_maze()
     // the solution.
     while(!button_is_pressed(BUTTON_B))
     {
-      if(get_ms() % 2000 < 1000)
+      if (false)
       {
         clear();
         print("Solved!");
