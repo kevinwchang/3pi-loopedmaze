@@ -8,7 +8,8 @@
 #include "follow-segment.h"
 #include "sounds.h"
 
-#define MAZE_SIZE 16
+#define MAZE_SIZE 8
+#define MAX_COST 255
 
 /*
     +y
@@ -70,7 +71,7 @@ typedef struct pos
 #define distance_between(a, b) (abs((b).x - (a).x) + abs((b).y - (a).y)) // manhattan distance
 
 uint8_t dir;
-pos start, here, finish;
+pos start, here, prev, finish;
 bool found_finish;
 bool recorded_finish;
 
@@ -121,85 +122,89 @@ void clear_map()
   for (uint8_t y = 0; y < MAZE_SIZE; y++)
   {
     for (uint8_t x = 0; x < MAZE_SIZE; x++)
-      maze[x][y] = (node){ .cost = 255, .marks = 0 };
+      maze[x][y] = (node){ .cost = MAX_COST, .marks = 0 };
   }
 }
 
 void shift_map_north(uint8_t amt)
 {
-  for (uint8_t y = (MAZE_SIZE - 1); y >= 0; y--) 
+  for (int8_t y = (MAZE_SIZE - 1); y >= 0; y--) 
   {
-    for (uint8_t x = 0; x < MAZE_SIZE; x++)
+    for (int8_t x = 0; x < MAZE_SIZE; x++)
     {
       if (y >= amt)
-        maze[x][y] = maze[x][y - amt];
+        maze[x][y].marks = maze[x][y - amt].marks;
       else
-        maze[x][y] = (node){ 0, 0 };
+        maze[x][y].marks = 0;
     }
   }
   
   start.y  += amt;
   here.y   += amt;
+  prev.y   += amt;
   finish.y += amt;
-}
-
-void shift_map_south(uint8_t amt)
-{
-  for (uint8_t y = 0; y < MAZE_SIZE; y++)
-  {
-    for (uint8_t x = 0; x < MAZE_SIZE; x++)
-    {
-      if (y < (MAZE_SIZE - amt))
-        maze[x][y] = maze[x][y + amt];
-      else
-        maze[x][y] = (node){ 0, 0 };
-    }
-  }
-  
-  start.y  -= amt;
-  here.y   -= amt;
-  finish.y -= amt;
 }
 
 void shift_map_east(uint8_t amt)
 {
-  for (uint8_t x = (MAZE_SIZE - 1); x >= 0; x--)
+  for (int8_t x = (MAZE_SIZE - 1); x >= 0; x--)
   {
-    for (uint8_t y = 0; y < MAZE_SIZE; y++)
+    for (int8_t y = 0; y < MAZE_SIZE; y++)
     {
       if (x >= amt)
-      maze[x][y] = maze[x - amt][y];
+        maze[x][y].marks = maze[x - amt][y].marks;
       else
-      maze[x][y] = (node){ 0, 0 };
+        maze[x][y].marks = 0;
     }
   }
   
    start.x  += amt;
    here.x   += amt;
+   prev.x   += amt;
    finish.x += amt;
+}
+
+void shift_map_south(uint8_t amt)
+{
+  for (int8_t y = 0; y < MAZE_SIZE; y++)
+  {
+    for (int8_t x = 0; x < MAZE_SIZE; x++)
+    {
+      if (y < (MAZE_SIZE - amt))
+        maze[x][y].marks = maze[x][y + amt].marks;
+      else
+        maze[x][y].marks = 0;
+    }
+  }
+  
+  start.y  -= amt;
+  here.y   -= amt;
+  prev.y   -= amt;
+  finish.y -= amt;
 }
 
 void shift_map_west(uint8_t amt)
 {
-  for (uint8_t x = 0; x < MAZE_SIZE; x++)
+  for (int8_t x = 0; x < MAZE_SIZE; x++)
   {
-    for (uint8_t y = 0; y < MAZE_SIZE; y++)
+    for (int8_t y = 0; y < MAZE_SIZE; y++)
     {
       if (x < (MAZE_SIZE - amt))
-      maze[x][y] = maze[x + amt][y];
+        maze[x][y].marks = maze[x + amt][y].marks;
       else
-      maze[x][y] = (node){ 0, 0 };
+        maze[x][y].marks = 0;
     }
   }
   
   start.x  -= amt;
   here.x   -= amt;
+  prev.x   -= amt;
   finish.x -= amt;
 }
 
 void update_map(uint8_t seg_length)
 {
-  pos prev = here;
+  prev = here;
   
   // record the most recent segment followed
   
@@ -262,7 +267,33 @@ void update_map(uint8_t seg_length)
   dir_marks[NORTH] = get_north_marks(here.x, here.y);
   dir_marks[EAST]  = get_east_marks(here.x, here.y);
   dir_marks[SOUTH] = get_north_marks(here.x, here.y - 1);
-  dir_marks[WEST]  = get_east_marks(here.x - 1, here.y);     
+  dir_marks[WEST]  = get_east_marks(here.x - 1, here.y);
+  
+  
+  /*set_motors(0, 0);
+  clear();
+  lcd_goto_xy(1, 0);
+  print_long(dir_marks[dir]);
+  lcd_goto_xy(0, 1);
+  print_long(dir_marks[left_of(dir)]);
+  print_long(dir_marks[flip(dir)]);
+  print_long(dir_marks[right_of(dir)]);
+  lcd_goto_xy(3, 0);
+  switch(dir)
+  {
+    case NORTH: print_character('N'); break;
+    case EAST:  print_character('E'); break;
+    case SOUTH: print_character('S'); break;
+    case WEST:  print_character('W'); break;
+  }
+  lcd_goto_xy(5, 0);
+  print_character('x');
+  print_long(here.x);
+  lcd_goto_xy(5, 1);
+  print_character('y');
+  print_long(here.y);
+  wait_for_button(BUTTON_B);
+  delay(200);*/
 }  
 
 char select_turn()
@@ -401,7 +432,7 @@ void add_path_segment(char turn_dir, uint8_t seg_length)
 
 void build_path()
 {
-  pos prev = start;
+  prev = start;
   here = start;
   dir = NORTH;
   
