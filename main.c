@@ -107,13 +107,23 @@ int main()
 	// Call our maze solving routine.
 	map_maze();
 
-	// This part of the code is never reached.  A robot should
-	// never reach the end of its program, or unpredictable behavior
-	// will result as random code starts getting executed.  If you
-	// really want to stop all actions at some point, set your motors
-	// to 0,0 and run the following command to loop forever:
-
-	while(1);
+	// Now enter an infinite loop - we can re-run the maze as many
+  // times as we want to.
+  while(1)
+  {    
+    unsigned char button = wait_for_button(BUTTON_A | BUTTON_C);
+    play_from_program_space(go);
+	  while (is_playing());
+  
+    if (button == BUTTON_A)
+    {
+      run_maze_aggressive();
+    }
+    else
+    {
+      run_maze_conservative();
+    }
+  }
 }
 
 // Local Variables: **

@@ -1,4 +1,6 @@
 void map_maze();
+void run_maze_conservative();
+void run_maze_aggressive();
 
 // Local Variables: **
 // mode: C **

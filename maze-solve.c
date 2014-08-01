@@ -292,7 +292,7 @@ void update_map(uint8_t seg_length)
   lcd_goto_xy(5, 1);
   print_character('y');
   print_long(here.y);*/
-  lcd_goto_xy(0, 1);
+  clear();
   print_long(seg_length);
   //wait_for_button(BUTTON_B);
   //delay(200);
@@ -562,10 +562,12 @@ void map_maze()
     // might not be necessary...
     //set_motors(0, 0);
     
-    // empirically determined: length = (ms - 140) / 668
-    uint8_t seg_length = (((end_ms - start_ms) - 140) + 334) / 668;
+    // empirically determined: length = (ms - 65) / 709
+    uint8_t seg_length = (((end_ms - start_ms) - 65) + 354) / 709;
 
     update_map(seg_length);
+    lcd_goto_xy(0, 1);
+    print_long(end_ms - start_ms);
 
     if (found_finish && !recorded_finish)
     {
@@ -591,63 +593,42 @@ void map_maze()
   set_motors(0, 0);
   fill_all_costs();
   build_path();  
-  
-
-  // Now enter an infinite loop - we can re-run the maze as many
-  // times as we want to.
-  while(1)
-  {    
-   // Wait for the user to press a button, while displaying
-    // the solution.
-    while(!button_is_pressed(BUTTON_B))
-    {
-      if (false)
-      {
-        clear();
-        print("Solved!");
-        lcd_goto_xy(0,1);
-        print("Press B");
-      }
-      else
-        display_path();
-      delay_ms(30);
-    }
-    while(button_is_pressed(BUTTON_B));
-  
-    delay_ms(1000);
-
-    // Re-run the maze.  It's not necessary to identify the
-    // intersections, so this loop is really simple.
-    for(uint8_t i = 0; i < (path_length - 1); i++) // path ends with 'X'
-    {
-      // SECOND MAIN LOOP BODY  
-      if (path_seg_lengths[i] > 0)
-      {
-        follow_segment();
-
-        // Drive straight while slowing down, as before.
-        set_motors(50,50);
-        delay_ms(50);
-        set_motors(40,40);
-        delay_ms(200);
-      }      
-
-      // Make a turn according to the instruction stored in
-      // path[i].
-      turn(path[i]);
-    }
-    
-    // Follow the last segment up to the finish.
-    follow_segment();
-    set_motors(0, 0);
-
-    // Now we should be at the finish!  Restart the loop.
-  }
+  display_path();
 }
 
-// Local Variables: **
-// mode: C **
-// c-basic-offset: 4 **
-// tab-width: 4 **
-// indent-tabs-mode: t **
-// end: **
+void run_maze_conservative()
+{
+  // Re-run the maze.  It's not necessary to identify the
+  // intersections, so this loop is really simple.
+  for(uint8_t i = 0; i < (path_length - 1); i++) // path ends with 'X'
+  {
+    if (path_seg_lengths[i] > 0)
+    {
+      follow_segment();
+
+      // Drive straight while slowing down, as before.
+      set_motors(50,50);
+      delay_ms(50);
+      set_motors(40,40);
+      delay_ms(200);
+    }      
+
+    // Make a turn according to the instruction stored in
+    // path[i].
+    turn(path[i]);
+  }
+    
+  // Follow the last segment up to the finish.
+  follow_segment();
+  set_motors(40,40);
+  delay_ms(200);
+  set_motors(0, 0);
+  play_from_program_space(done);
+
+  // Now we should be at the finish!
+}
+
+void run_maze_aggressive()
+{
+  
+}
