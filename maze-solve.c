@@ -90,7 +90,7 @@ uint8_t cost_here, dir_to_finish_here;
 
 char path[MAX_PATH_LENGTH];
 uint8_t path_seg_lengths[MAX_PATH_LENGTH];
-uint8_t path_length = 0; // the length of the path
+uint8_t path_length; // the length of the path
 
 
 // Displays the current path on the LCD, using two rows if necessary.
@@ -302,7 +302,7 @@ char select_turn()
 {  
   if ((dir_marks[left_of(dir)] || dir_marks[dir] || dir_marks[right_of(dir)]) && dir_marks[flip(dir)] == 1)
   {
-    // we've seen this junction before, but we didn't depart in the direction we just arrived from, so we found a loop; turn around and go back
+    // we've seen this intersection before, but we didn't depart in the direction we just arrived from, so we found a loop; turn around and go back
     return 'B';
   }
   
@@ -628,7 +628,62 @@ void run_maze_conservative()
   // Now we should be at the finish!
 }
 
+void turn_aggressive(char turn_dir)
+{
+  switch(turn_dir)
+  {
+  case 'L':
+    // Turn left.
+    set_motors(-20,130);
+    delay_ms(200);
+    break;
+  case 'R':
+    // Turn right.
+    set_motors(130,-20);
+    delay_ms(200);
+    break;
+  case 'B':
+    // Turn around.
+    set_motors(120,-120);
+    delay_ms(300);
+    break;
+  case 'S':
+    // Don't do anything!
+    break;
+  }    
+}
+
 void run_maze_aggressive()
 {
+  uint8_t straight_seg_length = 0, intersections_to_ignore = 0;
   
+  for(uint8_t i = 0; i < (path_length - 1); i++) // path ends with 'X'
+  {
+    if (path_seg_lengths[i] > 0)
+    {
+      straight_seg_length += path_seg_lengths[i];
+      
+      if (path[i] == 'S')
+      {
+        intersections_to_ignore++;
+        continue;
+      }
+      
+      follow_segment_aggressive(straight_seg_length, intersections_to_ignore);
+      
+      straight_seg_length = 0;
+      intersections_to_ignore = 0;
+    }      
+
+    // Make a turn according to the instruction stored in
+    // path[i].
+    turn_aggressive(path[i]);
+  }
+    
+  // Follow the last segment up to the finish.
+  follow_segment_aggressive(1, intersections_to_ignore);
+  set_motors(40,40);
+  delay_ms(200);
+  set_motors(0, 0);
+  play_from_program_space(done);
 }
