@@ -1,12 +1,13 @@
 #ifndef __sounds_h
 #define __sounds_h
 
-extern const char welcome[] PROGMEM;
-extern const char calibrate_welcome[] PROGMEM;
-extern const char calibrate_done[] PROGMEM;
-extern const char go[] PROGMEM;
-extern const char done[] PROGMEM;
-extern const char wakka[] PROGMEM;
+extern const char welcome_sound[] PROGMEM;
+extern const char calibrate_welcome_sound[] PROGMEM;
+extern const char calibrate_done_sound[] PROGMEM;
+extern const char go_sound[] PROGMEM;
+extern const char done_sound[] PROGMEM;
+extern const char map_turn_sound[] PROGMEM;
+extern const char run_turn_sound[] PROGMEM;
 
 void move_sound();
 

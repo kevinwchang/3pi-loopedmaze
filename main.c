@@ -49,7 +49,7 @@ void initialize()
   if (!check_stored_calibration() || button_is_pressed(BUTTON_C))
     perform_calibration(); // loops forever when done
   
-	play_from_program_space(welcome);
+	play_from_program_space(welcome_sound);
 
 	// Display battery voltage for 2 s or until button press
 	while(millis() < 2000 && !button_is_pressed(BUTTON_B))
@@ -93,7 +93,7 @@ void initialize()
 	print("Go!");		
 
 	// Play music and wait for it to finish before we start driving.
-	play_from_program_space(go);
+	play_from_program_space(go_sound);
 	while(is_playing());
 }
 
@@ -112,7 +112,7 @@ int main()
   while(1)
   {    
     unsigned char button = wait_for_button(BUTTON_A | BUTTON_C);
-    play_from_program_space(go);
+    play_from_program_space(go_sound);
 	  while (is_playing());
   
     if (button == BUTTON_A)

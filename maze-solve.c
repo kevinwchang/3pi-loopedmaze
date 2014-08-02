@@ -549,11 +549,11 @@ void map_maze()
     {
       found_left = found_straight = found_right = false;
       found_finish = true;
-      play_from_program_space(done);
+      play_from_program_space(done_sound);
     }
     else if (!is_playing())
     {
-      play_from_program_space(wakka);
+      play_from_program_space(map_turn_sound);
     }
     
     // Intersection identification is complete.
@@ -616,7 +616,7 @@ void run_maze_conservative()
     // Make a turn according to the instruction stored in
     // path[i].
     if (path[i] != 'S')
-      play_from_program_space(wakka);
+      play_from_program_space(run_turn_sound);
     turn(path[i]);
   }
     
@@ -625,7 +625,7 @@ void run_maze_conservative()
   set_motors(40,40);
   delay_ms(200);
   set_motors(0, 0);
-  play_from_program_space(done);
+  play_from_program_space(done_sound);
 
   // Now we should be at the finish!
 }
@@ -679,12 +679,12 @@ void run_maze_aggressive()
 
     // Make a turn according to the instruction stored in
     // path[i].
-    play_from_program_space(wakka);
+    play_from_program_space(run_turn_sound);
     turn_aggressive(path[i]);
   }
     
   // Follow the last segment up to the finish.
   follow_segment_aggressive(MAZE_SIZE, intersections_to_ignore); // don't bother slowing down in anticipation
   set_motors(0, 0);
-  play_from_program_space(done);
+  play_from_program_space(done_sound);
 }
