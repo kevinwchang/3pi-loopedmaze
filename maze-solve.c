@@ -294,7 +294,7 @@ void update_map(uint8_t seg_length)
   print_long(here.y);*/
   clear();
   print_long(seg_length);
-  //wait_for_button(BUTTON_B);
+  //wait_for_button(BUTTON_A);
   //delay(200);
 }  
 
@@ -504,6 +504,8 @@ void map_maze()
   
   clear_map();
   
+  set_digital_output(IO_D0, LOW);
+  
   // Loop until we have solved the maze.
   while(1)
   {
@@ -591,6 +593,7 @@ void map_maze()
   // Solved the maze!
   
   set_motors(0, 0);
+  set_digital_input(IO_D0, PULL_UP_ENABLED);
   fill_all_costs();
   build_path();  
   display_path();

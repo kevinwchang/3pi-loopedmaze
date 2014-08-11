@@ -31,7 +31,7 @@ void perform_calibration()
   lcd_goto_xy(0,1);
   print("Press B");
       
-  wait_for_button(BUTTON_B);
+  wait_for_button(BUTTON_A);
   
   // Wait 1 second and then begin automatic sensor calibration
   // by rotating in place to sweep the sensors over the line

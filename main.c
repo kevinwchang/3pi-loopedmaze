@@ -52,7 +52,7 @@ void initialize()
 	play_from_program_space(welcome_sound);
 
 	// Display battery voltage for 2 s or until button press
-	while(millis() < 2000 && !button_is_pressed(BUTTON_B))
+	while(millis() < 2000 && !button_is_pressed(BUTTON_A))
 	{
 		int bat = read_battery_millivolts();
 
@@ -64,12 +64,12 @@ void initialize()
 
 		delay_ms(100);
 	}
-  wait_for_button_release(BUTTON_B);
+  wait_for_button_release(BUTTON_A);
 
 	load_stored_calibration();
 
 	// Display calibrated values as a bar graph.
-	while(!button_is_pressed(BUTTON_B))
+	while(!button_is_pressed(BUTTON_A))
 	{
 		// Read the sensor values and get the position measurement.
 		unsigned int position = read_line(sensors,IR_EMITTERS_ON);
@@ -86,7 +86,7 @@ void initialize()
 
 		delay_ms(100);
 	}
-	wait_for_button_release(BUTTON_B);
+	wait_for_button_release(BUTTON_A);
 
 	clear();
 
@@ -114,15 +114,17 @@ int main()
     unsigned char button = wait_for_button(BUTTON_A | BUTTON_C);
     play_from_program_space(go_sound);
 	  while (is_playing());
-  
+
     if (button == BUTTON_A)
     {
       run_maze_aggressive();
     }
     else
     {
+      set_digital_output(IO_D0, LOW);
       run_maze_conservative();
-    }
+      set_digital_input(IO_D0, PULL_UP_ENABLED);
+    } 
   }
 }
 
